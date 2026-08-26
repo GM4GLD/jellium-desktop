@@ -592,7 +592,6 @@ impl RootState {
             return;
         };
         let (w, h) = (size.w(), size.h());
-
         let first = self.present.is_none();
         let present = if let Some(p) = self.pending_configure.take() {
             self.present = Some(p);
@@ -1272,6 +1271,14 @@ pub(crate) fn ensure_started(rt: &'static WlRuntime) {
     };
     let stop = Arc::new(AtomicBool::new(false));
 
+    // The boot geometry is the only logical size we know before the first
+    // xdg_toplevel.configure. Treat it as the current size so a compositor that
+    // reports a tiled/maximized state but no size can still make the window live.
+    let boot_size = crate::window_state::WindowSize::new(boot_w, boot_h)
+        .or_else(|| crate::window_state::WindowSize::new(DEFAULT_W, DEFAULT_H));
+    let mut initial_floating = FloatingRestore::EMPTY;
+    initial_floating.record(crate::window_state::WindowMode::Floating, boot_w, boot_h);
+
     let state = RootState {
         rt,
         registry_state: RegistryState::new(&globals),
@@ -1295,16 +1302,12 @@ pub(crate) fn ensure_started(rt: &'static WlRuntime) {
         bg: rt.root().pending_bg().unwrap_or(BG),
         frac_mgr,
         frac_scale,
-        current_size: None,
         pending_w: None,
         pending_h: None,
         mode: crate::window_state::WindowMode::Floating,
         suspended: false,
-        floating: {
-            let mut f = FloatingRestore::EMPTY;
-            f.record(crate::window_state::WindowMode::Floating, boot_w, boot_h);
-            f
-        },
+        floating: initial_floating,
+        current_size: boot_size,
         pending_configure: None,
         present: None,
         scale_discovery: ScaleDiscovery::Idle,
